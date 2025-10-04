@@ -1,0 +1,7 @@
+google-generativeai
+ffmpeg-python
+requests
+python-dotenv
+pandas
+matplotlib
+
