@@ -1,4 +1,3 @@
-# scripts/step_03b_generate_avatar_video.py
 import os
 import requests
 import time
@@ -10,7 +9,6 @@ D_ID_API_KEY = os.getenv("D_ID_API_KEY")
 D_ID_BASE_URL = "https://api.d-id.com"
 
 def check_credits(auth_tuple):
-    """Check available credits in the D-ID account."""
     try:
         response = requests.get(
             f"{D_ID_BASE_URL}/credits",
@@ -20,10 +18,8 @@ def check_credits(auth_tuple):
         response.raise_for_status()
         credits_data = response.json()
         print(f"Credits available: {credits_data}")
-        # Parse 'remaining' from the root or nested credits list
         remaining_credits = credits_data.get("remaining", 0)
         if not remaining_credits and "credits" in credits_data:
-            # Handle nested credits list
             remaining_credits = sum(credit.get("remaining", 0) for credit in credits_data.get("credits", []))
         return remaining_credits
     except requests.exceptions.RequestException as e:
@@ -33,7 +29,6 @@ def check_credits(auth_tuple):
         return 0
 
 def upload_image(auth_tuple, image_path):
-    """Upload an image to D-ID and return the temporary URL."""
     print(f"Uploading image: {image_path}")
     try:
         with open(image_path, "rb") as image_file:
@@ -56,7 +51,6 @@ def upload_image(auth_tuple, image_path):
         return None
 
 def upload_audio(auth_tuple, audio_path):
-    """Upload an audio file to D-ID and return the temporary URL."""
     print(f"Uploading audio: {audio_path}")
     try:
         with open(audio_path, "rb") as audio_file:
@@ -79,32 +73,23 @@ def upload_audio(auth_tuple, audio_path):
         return None
 
 def generate_avatar_video(script_text: str, output_filename: str = "avatar_video.mp4") -> str:
-    """
-    Generates a lip-synced avatar video using D-ID's /talks endpoint.
-    Tries text-based script first, falls back to audio-based if needed.
-    """
     print("Generating lip-synced avatar video with D-ID...")
     print(f"DEBUG: Script text received: {repr(script_text)}")
-
     if not D_ID_API_KEY or ":" not in D_ID_API_KEY:
         print("Error: D_ID_API_KEY is missing or in the wrong format.")
         return None
-
     auth_user, auth_pass = D_ID_API_KEY.split(":", 1)
     auth_tuple = (auth_user, auth_pass)
-
-    # Step 1: Check available credits
     credits = check_credits(auth_tuple)
     if credits <= 0:
         print("Error: No credits available in D-ID account. Please check your account status or upgrade.")
         return None
     print(f"Proceeding with {credits} credits available.")
-
-    # Step 2: Try default presenter first (alice.jpg)
-    source_url = "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg"
-    print(f"Using default presenter: {source_url}")
-
-    # Step 3: Try text-based script with Microsoft TTS
+    image_path = os.path.join(ASSETS_DIR, "presenter.jpg")
+    source_url = upload_image(auth_tuple, image_path) if os.path.exists(image_path) else None
+    if not source_url:
+        print("Falling back to default presenter: alice.jpg")
+        source_url = "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg"
     print("Creating talk job with text-based script...")
     payload = {
         "source_url": source_url,
@@ -117,10 +102,9 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
             }
         },
         "config": {
-            "stitch": True  # Include full image context, per Example #3
+            "stitch": True
         }
     }
-
     max_retries = 3
     talk_id = None
     for attempt in range(max_retries):
@@ -141,26 +125,15 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
             if e.response is not None:
                 print(f"D-ID Response: {e.response.text}")
             if attempt + 1 == max_retries:
-                print("Max retries reached. Trying audio-based script with uploaded presenter...")
-
-                # Step 4: Fallback to uploaded presenter and audio-based script
-                image_path = os.path.join(ASSETS_DIR, "presenter.jpg")
-                source_url = upload_image(auth_tuple, image_path) if os.path.exists(image_path) else None
-                if not source_url:
-                    print("Error: Failed to obtain a valid source_url for fallback.")
-                    return None
-
+                print("Max retries reached. Trying audio-based script...")
                 audio_path = os.path.join(ASSETS_DIR, "commentary.mp3")
                 if not os.path.exists(audio_path):
                     print("Error: commentary.mp3 not found for audio-based fallback.")
                     return None
-
                 audio_url = upload_audio(auth_tuple, audio_path)
                 if not audio_url:
                     print("Error: Failed to upload audio for fallback.")
                     return None
-
-                payload["source_url"] = source_url
                 payload["script"] = {
                     "type": "audio",
                     "audio_url": audio_url
@@ -182,12 +155,9 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
                         print(f"D-ID Response: {e.response.text}")
                     return None
             time.sleep(2)
-
     if not talk_id:
         print("Failed to create talk job after all attempts.")
         return None
-
-    # Step 5: Poll for job completion
     for attempt in range(30):
         print(f"Waiting for talk job to complete... (Attempt {attempt + 1}/30)")
         time.sleep(10)
@@ -199,7 +169,6 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
             )
             response.raise_for_status()
             data = response.json()
-
             if data.get("status") == "done":
                 video_url = data.get("result_url")
                 if not video_url:
@@ -207,16 +176,13 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
                     print(f"D-ID Response: {data}")
                     return None
                 print(f"Video ready! Downloading from: {video_url}")
-
                 video_response = requests.get(video_url)
                 video_response.raise_for_status()
-
                 output_path = os.path.join(ASSETS_DIR, output_filename)
                 with open(output_path, "wb") as f:
                     f.write(video_response.content)
                 print(f"Video saved locally to: {output_path}")
                 return output_path
-
             elif data.get("status") in ["error", "rejected"]:
                 print(f"Talk job failed. Status: {data.get('status')}. Details: {data.get('result', 'No error details provided')}")
                 return None
@@ -225,6 +191,5 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
             if e.response is not None:
                 print(f"D-ID Response: {e.response.text}")
             return None
-
     print("Timeout: Talk job did not complete in time.")
     return None

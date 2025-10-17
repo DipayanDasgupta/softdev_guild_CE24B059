@@ -1,57 +1,52 @@
-# scripts/step_02_create_visuals.py
-import matplotlib.pyplot as plt
-import pandas as pd
 import os
+import json
 import requests
+from playwright.sync_api import sync_playwright
 
 API_BASE_URL = "http://127.0.0.1:8000"
 ASSETS_DIR = "assets"
 
-def create_player_stat_chart(player_id: int) -> str:
-    """
-    Fetches player stats and creates a bar chart, saving it as a PNG.
-    """
-    print(f"Creating static chart with Matplotlib for player ID: {player_id}...")
-    
+def create_player_stat_chart(player_id: int, match_id: int = None) -> str:
+    print(f"Generating animated chart video for player ID: {player_id}, match ID: {match_id}...")
     try:
-        response = requests.get(f"{API_BASE_URL}/players/{player_id}/stats")
+        if match_id:
+            response = requests.get(f"{API_BASE_URL}/players/{player_id}/matches/{match_id}/stats")
+        else:
+            response = requests.get(f"{API_BASE_URL}/players/{player_id}/stats")
         response.raise_for_status()
         stats = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching data for visual: {e}")
-        return None
-
+        print(f"Error fetching data for chart: {e}")
+        raise e
     player_name = stats.get('player_name', 'Player')
-    
     chart_data = {
-        "Total Runs": stats.get('total_runs', 0),
-        "Fifties": stats.get('fifties', 0),
-        "Hundreds": stats.get('hundreds', 0),
-        "Matches": stats.get('matches_played', 0)
+        "Total Runs": stats.get('total_runs', 0) if not match_id else stats.get('runs', 0),
+        "Fifties": stats.get('fifties', 0) if not match_id else (1 if 50 <= stats.get('runs', 0) < 100 else 0),
+        "Hundreds": stats.get('hundreds', 0) if not match_id else (1 if stats.get('runs', 0) >= 100 else 0),
+        "Matches": stats.get('matches_played', 0) if not match_id else 1
     }
-    
-    chart_series = pd.Series(chart_data)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    chart_series.plot(kind='bar', ax=ax, color=['skyblue', 'lightgreen', 'salmon', 'gold'])
-    
-    ax.set_title(f"Career Highlights: {player_name}", fontsize=16, weight='bold')
-    ax.set_ylabel("Count", fontsize=12)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=0, fontsize=12)
-
-    # Add value labels on top of bars
-    for p in ax.patches:
-        ax.annotate(str(p.get_height()), (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='center', xytext=(0, 10), textcoords='offset points')
-
-    plt.tight_layout()
-    
-    if not os.path.exists(ASSETS_DIR):
-        os.makedirs(ASSETS_DIR)
-        
-    output_path = os.path.join(ASSETS_DIR, f"{player_name.replace(' ', '_')}_stats.png")
-    plt.savefig(output_path)
-    plt.close()
-    
-    print(f"Static chart saved successfully to: {output_path}")
+    template_path = os.path.join(ASSETS_DIR, "chart_template.html")
+    with open(template_path, 'r') as f:
+        html_template = f.read()
+    html_content = html_template.replace("{{CHART_DATA}}", json.dumps(chart_data))
+    title = f"Match Performance: {player_name}" if match_id else f"Career Highlights: {player_name}"
+    html_content = html_content.replace("{{CHART_TITLE}}", title)
+    output_path = os.path.join(ASSETS_DIR, f"chart_animation_{player_id}_{match_id or 'career'}.mp4")
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context(
+            viewport={'width': 1280, 'height': 720},
+            record_video_dir=ASSETS_DIR,
+            record_video_size={'width': 1280, 'height': 720}
+        )
+        page = context.new_page()
+        page.set_content(html_content)
+        page.wait_for_timeout(3000)
+        context.close()
+        browser.close()
+        temp_video_path = page.video.path()
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        os.rename(temp_video_path, output_path)
+    print(f"Animated chart saved successfully to: {output_path}")
     return output_path

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Animated Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; background-color: #f0f0f0; }
+        div { width: 1280px; height: 720px; }
+    </style>
+</head>
+<body>
+    <div>
+        <canvas id="myChart"></canvas>
+    </div>
+    <script>
+        const ctx = document.getElementById('myChart').getContext('2d');
+        const chartData = {{CHART_DATA}};
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(chartData),
+                datasets: [{
+                    label: 'Count',
+                    data: Object.values(chartData),
+                    backgroundColor: ['skyblue', 'lightgreen', 'salmon', 'gold']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: {
+                    duration: 2000
+                },
+                plugins: {
+                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: '{{CHART_TITLE}}',
+                        font: { size: 24 }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
