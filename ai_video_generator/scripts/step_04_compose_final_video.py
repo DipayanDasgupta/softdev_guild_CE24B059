@@ -1,62 +1,58 @@
 # scripts/step_04_compose_final_video.py
-import ffmpeg
 import os
+import re
+from moviepy.editor import *
 
 ASSETS_DIR = "assets"
 OUTPUT_DIR = "output"
 
-def compose_final_video(audio_path: str, chart_image_path: str, output_filename: str) -> str:
+def compose_final_video(chart_image_path: str, avatar_video_path: str, script_text: str, output_filename: str) -> str:
     """
-    Creates a video by showing a chart, then a presenter image with AI audio.
+    Creates a video with a static chart, the D-ID avatar video, music, and text overlays.
     """
-    print("Composing final video with AI audio...")
+    print("Composing final video with MoviePy...")
     
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
-        
-    presenter_image_path = os.path.join(ASSETS_DIR, "presenter.jpg")
-    if not os.path.exists(presenter_image_path):
-        print(f"Error: Presenter image not found at {presenter_image_path}")
+    music_path = os.path.join(ASSETS_DIR, "music.mp3")
+    if not os.path.exists(music_path):
+        print("Error: music.mp3 not found in assets folder.")
         return None
+    
+    # --- VIDEO CLIPS ---
+    chart_clip = ImageClip(chart_image_path).set_duration(5).resize(width=1280)
+    presenter_clip = VideoFileClip(avatar_video_path).resize(height=720)
 
-    try:
-        # --- Get the duration of the generated audio file ---
-        probe = ffmpeg.probe(audio_path)
-        audio_duration = float(probe['format']['duration'])
-
-        # --- Define video segments ---
-        # Segment 1: The chart, shown for 5 seconds
-        chart_segment = (
-            ffmpeg
-            .input(chart_image_path, t=5, loop=1, framerate=25)
-            .filter('scale', size='1280:720', force_original_aspect_ratio='decrease')
-            .filter('pad', w=1280, h=720, x='(ow-iw)/2', y='(oh-ih)/2', color='black')
-        )
+    # --- DYNAMIC TEXT OVERLAYS ---
+    sentences = re.split(r'(?<=[.!?])\s+', script_text)
+    sentence_clips = []
+    current_time = 0
+    
+    for sentence in sentences:
+        if not sentence: continue
+        words = len(sentence.split())
+        duration = max(2.0, words / 3.0)  # Estimate duration
         
-        # Segment 2: The presenter image, looped for the duration of the audio
-        presenter_segment = (
-            ffmpeg
-            .input(presenter_image_path, t=audio_duration, loop=1, framerate=25)
-            .filter('scale', '1280', '720')
-        )
+        txt_clip = (TextClip(sentence, fontsize=45, color='white', font='Arial-Bold',
+                             bg_color='rgba(0,0,0,0.5)', size=(chart_clip.w * 0.8, None))
+                    .set_position(('center', 0.8), relative=True)
+                    .set_duration(duration)
+                    .set_start(current_time))
+        sentence_clips.append(txt_clip)
+        current_time += duration
 
-        # --- Define the single audio input ---
-        audio_input = ffmpeg.input(audio_path)
+    presenter_with_text = CompositeVideoClip([presenter_clip] + sentence_clips)
 
-        # --- Concatenate video segments and map the final audio ---
-        final_video = (
-            ffmpeg
-            .concat(chart_segment, presenter_segment, v=1, a=0)
-            .output(audio_input.audio, os.path.join(OUTPUT_DIR, output_filename), pix_fmt='yuv420p', shortest=None)
-        )
+    # --- FINAL COMPOSITION ---
+    final_video_no_audio = concatenate_videoclips([chart_clip, presenter_with_text], method="compose")
+    
+    # --- AUDIO MIXING ---
+    voice_audio = presenter_clip.audio.set_start(chart_clip.duration)
+    music_audio = AudioFileClip(music_path).volumex(0.15)
+    
+    final_audio = CompositeAudioClip([voice_audio, music_audio]).set_duration(final_video_no_audio.duration)
+    final_video = final_video_no_audio.set_audio(final_audio)
 
-        final_video.run(overwrite_output=True)
-        final_path = os.path.join(OUTPUT_DIR, output_filename)
-        print(f"Final video composed successfully: {final_path}")
-        return final_path
-        
-    except ffmpeg.Error as e:
-        print("FFmpeg error occurred.")
-        if e.stderr:
-            print("FFmpeg stderr:", e.stderr.decode())
-        return None
+    output_path = os.path.join(OUTPUT_DIR, output_filename)
+    final_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
+    
+    print(f"Final video composed successfully with MoviePy: {output_path}")
+    return output_path

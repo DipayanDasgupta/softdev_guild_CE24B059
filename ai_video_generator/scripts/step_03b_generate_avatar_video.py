@@ -1,0 +1,230 @@
+# scripts/step_03b_generate_avatar_video.py
+import os
+import requests
+import time
+from dotenv import load_dotenv
+
+load_dotenv()
+ASSETS_DIR = "assets"
+D_ID_API_KEY = os.getenv("D_ID_API_KEY")
+D_ID_BASE_URL = "https://api.d-id.com"
+
+def check_credits(auth_tuple):
+    """Check available credits in the D-ID account."""
+    try:
+        response = requests.get(
+            f"{D_ID_BASE_URL}/credits",
+            auth=auth_tuple,
+            headers={"accept": "application/json"}
+        )
+        response.raise_for_status()
+        credits_data = response.json()
+        print(f"Credits available: {credits_data}")
+        # Parse 'remaining' from the root or nested credits list
+        remaining_credits = credits_data.get("remaining", 0)
+        if not remaining_credits and "credits" in credits_data:
+            # Handle nested credits list
+            remaining_credits = sum(credit.get("remaining", 0) for credit in credits_data.get("credits", []))
+        return remaining_credits
+    except requests.exceptions.RequestException as e:
+        print(f"Error checking credits: {e}")
+        if e.response is not None:
+            print(f"D-ID Response: {e.response.text}")
+        return 0
+
+def upload_image(auth_tuple, image_path):
+    """Upload an image to D-ID and return the temporary URL."""
+    print(f"Uploading image: {image_path}")
+    try:
+        with open(image_path, "rb") as image_file:
+            files = {"image": (os.path.basename(image_path), image_file, "image/jpeg")}
+            response = requests.post(
+                f"{D_ID_BASE_URL}/images",
+                auth=auth_tuple,
+                files=files,
+                headers={"accept": "application/json"}
+            )
+            response.raise_for_status()
+            image_data = response.json()
+            image_url = image_data.get("url")
+            print(f"Image uploaded successfully. URL: {image_url}")
+            return image_url
+    except requests.exceptions.RequestException as e:
+        print(f"Error uploading image: {e}")
+        if e.response is not None:
+            print(f"D-ID Response: {e.response.text}")
+        return None
+
+def upload_audio(auth_tuple, audio_path):
+    """Upload an audio file to D-ID and return the temporary URL."""
+    print(f"Uploading audio: {audio_path}")
+    try:
+        with open(audio_path, "rb") as audio_file:
+            files = {"audio": (os.path.basename(audio_path), audio_file, "audio/mpeg")}
+            response = requests.post(
+                f"{D_ID_BASE_URL}/audios",
+                auth=auth_tuple,
+                files=files,
+                headers={"accept": "application/json"}
+            )
+            response.raise_for_status()
+            audio_data = response.json()
+            audio_url = audio_data.get("url")
+            print(f"Audio uploaded successfully. URL: {audio_url}")
+            return audio_url
+    except requests.exceptions.RequestException as e:
+        print(f"Error uploading audio: {e}")
+        if e.response is not None:
+            print(f"D-ID Response: {e.response.text}")
+        return None
+
+def generate_avatar_video(script_text: str, output_filename: str = "avatar_video.mp4") -> str:
+    """
+    Generates a lip-synced avatar video using D-ID's /talks endpoint.
+    Tries text-based script first, falls back to audio-based if needed.
+    """
+    print("Generating lip-synced avatar video with D-ID...")
+    print(f"DEBUG: Script text received: {repr(script_text)}")
+
+    if not D_ID_API_KEY or ":" not in D_ID_API_KEY:
+        print("Error: D_ID_API_KEY is missing or in the wrong format.")
+        return None
+
+    auth_user, auth_pass = D_ID_API_KEY.split(":", 1)
+    auth_tuple = (auth_user, auth_pass)
+
+    # Step 1: Check available credits
+    credits = check_credits(auth_tuple)
+    if credits <= 0:
+        print("Error: No credits available in D-ID account. Please check your account status or upgrade.")
+        return None
+    print(f"Proceeding with {credits} credits available.")
+
+    # Step 2: Try default presenter first (alice.jpg)
+    source_url = "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg"
+    print(f"Using default presenter: {source_url}")
+
+    # Step 3: Try text-based script with Microsoft TTS
+    print("Creating talk job with text-based script...")
+    payload = {
+        "source_url": source_url,
+        "script": {
+            "type": "text",
+            "input": script_text,
+            "provider": {
+                "type": "microsoft",
+                "voice_id": "en-US-JennyNeural"
+            }
+        },
+        "config": {
+            "stitch": True  # Include full image context, per Example #3
+        }
+    }
+
+    max_retries = 3
+    talk_id = None
+    for attempt in range(max_retries):
+        try:
+            print(f"Attempt {attempt + 1}/{max_retries} to create talk job...")
+            response = requests.post(
+                f"{D_ID_BASE_URL}/talks",
+                json=payload,
+                auth=auth_tuple,
+                headers={"accept": "application/json", "content-type": "application/json"}
+            )
+            response.raise_for_status()
+            talk_id = response.json().get("id")
+            print(f"Created talk job with ID: {talk_id}")
+            break
+        except requests.exceptions.RequestException as e:
+            print(f"Error creating talk job (Attempt {attempt + 1}): {e}")
+            if e.response is not None:
+                print(f"D-ID Response: {e.response.text}")
+            if attempt + 1 == max_retries:
+                print("Max retries reached. Trying audio-based script with uploaded presenter...")
+
+                # Step 4: Fallback to uploaded presenter and audio-based script
+                image_path = os.path.join(ASSETS_DIR, "presenter.jpg")
+                source_url = upload_image(auth_tuple, image_path) if os.path.exists(image_path) else None
+                if not source_url:
+                    print("Error: Failed to obtain a valid source_url for fallback.")
+                    return None
+
+                audio_path = os.path.join(ASSETS_DIR, "commentary.mp3")
+                if not os.path.exists(audio_path):
+                    print("Error: commentary.mp3 not found for audio-based fallback.")
+                    return None
+
+                audio_url = upload_audio(auth_tuple, audio_path)
+                if not audio_url:
+                    print("Error: Failed to upload audio for fallback.")
+                    return None
+
+                payload["source_url"] = source_url
+                payload["script"] = {
+                    "type": "audio",
+                    "audio_url": audio_url
+                }
+                try:
+                    response = requests.post(
+                        f"{D_ID_BASE_URL}/talks",
+                        json=payload,
+                        auth=auth_tuple,
+                        headers={"accept": "application/json", "content-type": "application/json"}
+                    )
+                    response.raise_for_status()
+                    talk_id = response.json().get("id")
+                    print(f"Created talk job with audio script, ID: {talk_id}")
+                    break
+                except requests.exceptions.RequestException as e:
+                    print(f"Error creating talk job with audio: {e}")
+                    if e.response is not None:
+                        print(f"D-ID Response: {e.response.text}")
+                    return None
+            time.sleep(2)
+
+    if not talk_id:
+        print("Failed to create talk job after all attempts.")
+        return None
+
+    # Step 5: Poll for job completion
+    for attempt in range(30):
+        print(f"Waiting for talk job to complete... (Attempt {attempt + 1}/30)")
+        time.sleep(10)
+        try:
+            response = requests.get(
+                f"{D_ID_BASE_URL}/talks/{talk_id}",
+                auth=auth_tuple,
+                headers={"accept": "application/json"}
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("status") == "done":
+                video_url = data.get("result_url")
+                if not video_url:
+                    print("Error: No result_url found in response.")
+                    print(f"D-ID Response: {data}")
+                    return None
+                print(f"Video ready! Downloading from: {video_url}")
+
+                video_response = requests.get(video_url)
+                video_response.raise_for_status()
+
+                output_path = os.path.join(ASSETS_DIR, output_filename)
+                with open(output_path, "wb") as f:
+                    f.write(video_response.content)
+                print(f"Video saved locally to: {output_path}")
+                return output_path
+
+            elif data.get("status") in ["error", "rejected"]:
+                print(f"Talk job failed. Status: {data.get('status')}. Details: {data.get('result', 'No error details provided')}")
+                return None
+        except requests.exceptions.RequestException as e:
+            print(f"Error polling talk job: {e}")
+            if e.response is not None:
+                print(f"D-ID Response: {e.response.text}")
+            return None
+
+    print("Timeout: Talk job did not complete in time.")
+    return None
