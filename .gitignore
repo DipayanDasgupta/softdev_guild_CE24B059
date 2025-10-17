@@ -1,0 +1,23 @@
+# Environment variables
+.env
+
+# Database
+*.db
+
+# Generated files
+*.mp4
+*.png
+*.mp3
+*:Zone.Identifier
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

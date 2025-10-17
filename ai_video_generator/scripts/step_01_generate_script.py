@@ -1,12 +1,16 @@
 import os
 import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-2.5-flash')
-API_BASE_URL = "http://127.0.0.1:8000"
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 def generate_commentary_script(player_id: int, match_id: int = None, tone: str = "energetic") -> str:
     print(f"Fetching stats for player ID: {player_id}, match ID: {match_id}, tone: {tone}...")
