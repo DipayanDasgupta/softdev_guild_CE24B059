@@ -34,10 +34,13 @@ def upload_image(auth_tuple, image_path):
         print(f"Error: Image file {image_path} does not exist.")
         return None
     try:
+        # Determine MIME type based on file extension
+        file_ext = os.path.splitext(image_path)[1].lower()
+        mime_type = "image/jpeg" if file_ext in [".jpg", ".jpeg"] else "image/png" if file_ext == ".png" else "image/jpeg"
         with open(image_path, "rb") as image_file:
-            files = {"image": (os.path.basename(image_path), image_file, "image/jpeg")}
+            files = {"image": (os.path.basename(image_path), image_file, mime_type)}
             response = requests.post(
-                f"{D_ID_BASE_URL}/clips/images",  # Updated endpoint
+                f"{D_ID_BASE_URL}/images",
                 auth=auth_tuple,
                 files=files,
                 headers={"accept": "application/json"}
@@ -52,6 +55,34 @@ def upload_image(auth_tuple, image_path):
             return image_url
     except requests.exceptions.RequestException as e:
         print(f"Error uploading image: {e}")
+        if e.response is not None:
+            print(f"D-ID Response: {e.response.text}")
+        return None
+
+def upload_audio(auth_tuple, audio_path):
+    print(f"Uploading audio: {audio_path}")
+    if not os.path.exists(audio_path):
+        print(f"Error: Audio file {audio_path} does not exist.")
+        return None
+    try:
+        with open(audio_path, "rb") as audio_file:
+            files = {"audio": (os.path.basename(audio_path), audio_file, "audio/mpeg")}
+            response = requests.post(
+                f"{D_ID_BASE_URL}/audios",
+                auth=auth_tuple,
+                files=files,
+                headers={"accept": "application/json"}
+            )
+            response.raise_for_status()
+            audio_data = response.json()
+            audio_url = audio_data.get("url")
+            if not audio_url:
+                print("Error: No URL returned from audio upload.")
+                return None
+            print(f"Audio uploaded successfully. URL: {audio_url}")
+            return audio_url
+    except requests.exceptions.RequestException as e:
+        print(f"Error uploading audio: {e}")
         if e.response is not None:
             print(f"D-ID Response: {e.response.text}")
         return None
@@ -76,7 +107,7 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
     source_url = None
     if custom_presenter_filename:
         image_path = os.path.join(ASSETS_DIR, custom_presenter_filename)
-        source_url = upload_image(auth_tuple, image_path)
+        source_url = upload_image(auth_tuple, image_path) if os.path.exists(image_path) else None
     
     if not source_url:
         print("Custom presenter upload failed or not provided. Falling back to default presenter image.")
@@ -84,10 +115,10 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
         source_url = upload_image(auth_tuple, image_path) if os.path.exists(image_path) else None
     
     if not source_url:
-        print("Error: Failed to upload any presenter image. Aborting.")
-        return None
+        print("Falling back to default presenter: alice.jpg")
+        source_url = "https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg"
     
-    # Create talk job
+    # Create talk job with text-based script
     print("Creating talk job with text-based script...")
     payload = {
         "source_url": source_url,
@@ -100,9 +131,7 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
             }
         },
         "config": {
-            "stitch": True,
-            "fluent": True,
-            "pad_audio": 0.0
+            "stitch": True
         }
     }
     
@@ -112,7 +141,7 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
         try:
             print(f"Attempt {attempt + 1}/{max_retries} to create talk job...")
             response = requests.post(
-                f"{D_ID_BASE_URL}/clips",  # Updated endpoint
+                f"{D_ID_BASE_URL}/talks",
                 json=payload,
                 auth=auth_tuple,
                 headers={"accept": "application/json", "content-type": "application/json"}
@@ -126,8 +155,35 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
             if e.response is not None:
                 print(f"D-ID Response: {e.response.text}")
             if attempt + 1 == max_retries:
-                print("Max retries reached. Aborting.")
-                return None
+                print("Max retries reached. Trying audio-based script...")
+                audio_path = os.path.join(ASSETS_DIR, "commentary.mp3")
+                if not os.path.exists(audio_path):
+                    print("Error: commentary.mp3 not found for audio-based fallback.")
+                    return None
+                audio_url = upload_audio(auth_tuple, audio_path)
+                if not audio_url:
+                    print("Error: Failed to upload audio for fallback.")
+                    return None
+                payload["script"] = {
+                    "type": "audio",
+                    "audio_url": audio_url
+                }
+                try:
+                    response = requests.post(
+                        f"{D_ID_BASE_URL}/talks",
+                        json=payload,
+                        auth=auth_tuple,
+                        headers={"accept": "application/json", "content-type": "application/json"}
+                    )
+                    response.raise_for_status()
+                    talk_id = response.json().get("id")
+                    print(f"Created talk job with audio script, ID: {talk_id}")
+                    break
+                except requests.exceptions.RequestException as e:
+                    print(f"Error creating talk job with audio: {e}")
+                    if e.response is not None:
+                        print(f"D-ID Response: {e.response.text}")
+                    return None
             time.sleep(2)
     
     if not talk_id:
@@ -140,7 +196,7 @@ def generate_avatar_video(script_text: str, output_filename: str = "avatar_video
         time.sleep(10)
         try:
             response = requests.get(
-                f"{D_ID_BASE_URL}/clips/{talk_id}",  # Updated endpoint
+                f"{D_ID_BASE_URL}/talks/{talk_id}",
                 auth=auth_tuple,
                 headers={"accept": "application/json"}
             )
