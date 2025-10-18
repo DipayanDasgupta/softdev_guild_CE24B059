@@ -3,7 +3,7 @@ from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
 
 load_dotenv()
-ASSETS_DIR = "assets"
+from .config import ASSETS_DIR # <-- Use new config
 
 def generate_audio(script_text: str, filename: str = "commentary.mp3") -> str:
     print("Generating AI audio with ElevenLabs...")

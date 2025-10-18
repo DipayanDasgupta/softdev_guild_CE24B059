@@ -2,8 +2,7 @@ import os
 import re
 from moviepy.editor import *
 
-ASSETS_DIR = "assets"
-OUTPUT_DIR = "output"
+from .config import ASSETS_DIR, OUTPUT_DIR # <-- Use new config
 
 def compose_final_video(chart_path: str, avatar_video_path: str, script_text: str, output_filename: str) -> str:
     print("Composing final video with MoviePy...")

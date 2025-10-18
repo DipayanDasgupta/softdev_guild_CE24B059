@@ -1,4 +1,3 @@
-# ai_video_generator/main.py
 import time
 from scripts.step_01_generate_script import generate_commentary_script
 from scripts.step_02_create_visuals import create_player_stat_chart
@@ -6,11 +5,11 @@ from scripts.step_03_generate_audio import generate_audio
 from scripts.step_03b_generate_avatar_video import generate_avatar_video
 from scripts.step_04_compose_final_video import compose_final_video
 
-def run_pipeline(player_id: int, match_id: int = None, tone: str = "energetic") -> str:
+def run_pipeline(player_id: int, match_id: int = None, tone: str = "energetic", custom_presenter_filename: str = None) -> str:
     """
     Runs the full AI video pipeline for a given player and optional match.
     """
-    print(f"--- STARTING AI VIDEO PIPELINE FOR PLAYER ID: {player_id}, MATCH ID: {match_id}, TONE: {tone} ---")
+    print(f"--- STARTING AI VIDEO PIPELINE FOR PLAYER ID: {player_id}, MATCH ID: {match_id}, TONE: {tone}, CUSTOM PRESENTER: {custom_presenter_filename or 'default'} ---")
     start_time = time.time()
     
     # Step 1: Generate commentary script
@@ -31,8 +30,8 @@ def run_pipeline(player_id: int, match_id: int = None, tone: str = "energetic") 
         print("Pipeline failed at Step 2: Visual Generation.")
         return None
     
-    # Step 4: Generate avatar video
-    avatar_video_path = generate_avatar_video(script)
+    # Step 4: Generate avatar video with custom presenter
+    avatar_video_path = generate_avatar_video(script, custom_presenter_filename=custom_presenter_filename)
     if not avatar_video_path:
         print("Pipeline failed at Step 3b: Avatar Video Generation.")
         return None
