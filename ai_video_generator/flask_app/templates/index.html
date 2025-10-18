@@ -5,49 +5,74 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Cricket Commentary Generator</title>
     <style>
-        body { font-family: sans-serif; background-color: #1a202c; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background-color: #2d3748; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h1 { text-align: center; color: #63b3ed; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #1a202c; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background-color: #2d3748; padding: 2rem; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        h1 { text-align: center; color: #63b3ed; margin-bottom: 2rem; }
         .form-group { margin-bottom: 1.5rem; }
-        label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
-        input, select { width: 100%; padding: 0.75rem; border-radius: 4px; border: 1px solid #4a5568; background-color: #1a202c; color: white; box-sizing: border-box; }
-        button { width: 100%; padding: 0.75rem; border: none; border-radius: 4px; background-color: #4299e1; color: white; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: #a0aec0; }
+        input, select, .file-input-wrapper { width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid #4a5568; background-color: #1a202c; color: white; box-sizing: border-box; font-size: 1rem; }
+        select:disabled { background-color: #2d3748; opacity: 0.5; cursor: not-allowed; }
+        button { width: 100%; padding: 0.85rem; border: none; border-radius: 6px; background-color: #4299e1; color: white; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: background-color 0.2s ease-in-out; }
         button:hover { background-color: #3182ce; }
-        .search-results { border: 1px solid #4a5568; border-top: none; max-height: 200px; overflow-y: auto; background-color: #1a202c; }
-        .result-item { padding: 0.75rem; cursor: pointer; }
-        .result-item:hover { background-color: #4a5568; }
+        .divider { text-align: center; margin: 2rem 0; color: #718096; position: relative; }
+        .divider:before, .divider:after { content: ""; position: absolute; top: 50%; width: 40%; border-top: 1px solid #4a5568; }
+        .divider:before { left: 0; }
+        .divider:after { right: 0; }
         #loading { display: none; text-align: center; margin-top: 1rem; }
+        #loading p { font-size: 1.2rem; }
+        fieldset { border: 1px solid #4a5568; border-radius: 6px; padding: 1.5rem; }
+        legend { font-weight: bold; color: #cbd5e0; margin-left: 1rem; padding: 0 0.5rem; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>AI Cricket Commentary</h1>
+        <!-- FIX: Corrected enctype -->
         <form id="video-form" action="/generate" method="post" enctype="multipart/form-data">
-            <!-- Player Search -->
-            <div class="form-group">
-                <label for="player-name">Player Name</label>
-                <input type="text" id="player-name" name="player_name" placeholder="Start typing a player's name..." autocomplete="off" required>
-                <input type="hidden" id="player-id" name="player_id">
-                <div class="search-results" id="search-results"></div>
-            </div>
             
-            <div class="form-group">
-                <label for="match-id">Match ID (optional)</label>
-                <input type="text" id="match-id" name="match_id" placeholder="e.g., 335982">
-            </div>
+            <fieldset>
+                <legend>Select by Match Performance</legend>
+                <div class="form-group">
+                    <label for="year-select">1. Select Year</label>
+                    <select id="year-select" name="year">
+                        <option value="">-- Select a Year --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="match-select">2. Select Match</label>
+                    <select id="match-select" name="match_id" disabled>
+                        <option value="">-- Select a Year First --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="player-select">3. Select Player</label>
+                    <select id="player-select" name="player_id" disabled>
+                        <option value="">-- Select a Match First --</option>
+                    </select>
+                </div>
+            </fieldset>
 
-            <!-- Commentary Tone -->
+            <div class="divider">OR</div>
+
+            <fieldset>
+                 <legend>Search by Player Career</legend>
+                 <div class="form-group">
+                    <label for="player-name-search">Player Name (for career summary)</label>
+                    <input type="text" id="player-name-search" name="player_name_search" placeholder="Start typing a player's name...">
+                    <input type="hidden" id="player-id-search" name="player_id_career">
+                 </div>
+            </fieldset>
+
+            <hr style="border-color: #4a5568; margin: 2rem 0;">
+
             <div class="form-group">
                 <label for="tone">Commentary Tone</label>
                 <select id="tone" name="tone">
                     <option value="energetic" selected>Energetic</option>
                     <option value="analytical">Analytical</option>
                     <option value="dramatic">Dramatic</option>
-                    <option value="humorous">Humorous</option>
                 </select>
             </div>
-
-            <!-- NEW: Custom Presenter Image Upload -->
             <div class="form-group">
                 <label for="presenter_image">Custom Presenter Image (optional)</label>
                 <input type="file" id="presenter_image" name="presenter_image" accept="image/jpeg, image/png">
@@ -55,78 +80,118 @@
 
             <button type="submit">Generate Video</button>
         </form>
-        <div id="loading">
-            <p>Generating video... This may take a few minutes. Please wait.</p>
-        </div>
+        <div id="loading"><p>Generating video... This may take several minutes.</p></div>
     </div>
 
     <script>
-        const playerNameInput = document.getElementById('player-name');
-        const playerIdInput = document.getElementById('player-id');
-        const searchResults = document.getElementById('search-results');
+        const API_BASE_URL = 'http://127.0.0.1:8000';
+        const yearSelect = document.getElementById('year-select');
+        const matchSelect = document.getElementById('match-select');
+        const playerSelect = document.getElementById('player-select');
+        const playerNameSearch = document.getElementById('player-name-search');
+        const playerIdCareer = document.getElementById('player-id-search');
         const form = document.getElementById('video-form');
         const loadingDiv = document.getElementById('loading');
-        let debounceTimer;
+        
+        // Populate Years on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/seasons`);
+                if (!res.ok) throw new Error(`API error: ${res.status}`);
+                const years = await res.json();
+                years.forEach(year => yearSelect.add(new Option(year, year)));
+            } catch (error) { console.error('Failed to load years:', error); }
+        });
 
-        // --- Real-time player search logic ---
-        playerNameInput.addEventListener('input', () => {
-            clearTimeout(debounceTimer);
-            const query = playerNameInput.value;
+        // On Year change -> Fetch Matches
+        yearSelect.addEventListener('change', async () => {
+            resetDropdowns(['match', 'player']);
+            const year = yearSelect.value;
+            if (!year) return;
+
+            setLoadingState(matchSelect, 'Loading matches...', true);
+            try {
+                const res = await fetch(`${API_BASE_URL}/matches/season/${year}`);
+                if (!res.ok) throw new Error(`API error: ${res.status}`);
+                const matches = await res.json();
+                populateDropdown(matchSelect, matches, 'display_title', 'id', '-- Select a Match --');
+            } catch (error) {
+                console.error('Failed to load matches:', error);
+                setErrorState(matchSelect, 'Error loading matches');
+            }
+        });
+
+        // On Match change -> Fetch Players
+        matchSelect.addEventListener('change', async () => {
+            resetDropdowns(['player']);
+            const matchId = matchSelect.value;
+            if (!matchId) return;
+
+            setLoadingState(playerSelect, 'Loading players...', true);
+            try {
+                const res = await fetch(`${API_BASE_URL}/matches/${matchId}/players`);
+                if (!res.ok) throw new Error(`API error: ${res.status}`);
+                const playersByTeam = await res.json();
+                
+                playerSelect.innerHTML = '';
+                playerSelect.add(new Option('-- Select a Player --', ''));
+                for (const team in playersByTeam) {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = team;
+                    playersByTeam[team].forEach(player => {
+                        optgroup.appendChild(new Option(player.name, player.id));
+                    });
+                    playerSelect.appendChild(optgroup);
+                }
+                playerSelect.disabled = false;
+
+            } catch (error) {
+                console.error('Failed to load players:', error);
+                setErrorState(playerSelect, 'Error loading players');
+            }
+        });
+        
+        form.addEventListener('submit', (event) => {
+            const matchPlayerId = playerSelect.value;
+            const careerPlayerId = playerIdCareer.value;
             
-            if (query.length < 2) {
-                searchResults.innerHTML = '';
+            // Clear the non-selected path to avoid confusion
+            if (matchPlayerId) {
+                playerIdCareer.value = ''; // Clear career selection
+            } else if (careerPlayerId) {
+                matchSelect.value = ''; // Clear match selection
+            } else {
+                alert("Please select a player, either for a specific match or for a career summary.");
+                event.preventDefault();
                 return;
             }
-
-            debounceTimer = setTimeout(() => {
-                fetch(`http://127.0.0.1:8000/players/search?name=${query}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        searchResults.innerHTML = '';
-                        if (data && data.length > 0) {
-                            data.forEach(player => {
-                                const item = document.createElement('div');
-                                item.classList.add('result-item');
-                                item.textContent = player.name;
-                                item.dataset.id = player.id;
-                                item.dataset.name = player.name;
-                                searchResults.appendChild(item);
-                            });
-                        } else {
-                            searchResults.innerHTML = '<div class="result-item">No players found</div>';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error fetching players:', error);
-                        searchResults.innerHTML = '<div class="result-item">API Error</div>';
-                    });
-            }, 300); // Debounce to avoid too many API calls
+            
+            loadingDiv.style.display = 'block';
+            form.style.display = 'none';
         });
 
-        // --- Handle selection from search results ---
-        searchResults.addEventListener('click', (e) => {
-            if (e.target && e.target.classList.contains('result-item')) {
-                const selectedId = e.target.dataset.id;
-                const selectedName = e.target.dataset.name;
-                
-                if (selectedId) {
-                    playerNameInput.value = selectedName;
-                    playerIdInput.value = selectedId;
-                    searchResults.innerHTML = '';
-                }
-            }
-        });
+        // --- Helper Functions ---
+        function populateDropdown(select, items, textKey, valueKey, defaultText) {
+            select.innerHTML = '';
+            select.add(new Option(defaultText, ''));
+            items.forEach(item => select.add(new Option(item[textKey], item[valueKey])));
+            select.disabled = false;
+        }
 
-        // --- Show loading message on submit ---
-        form.addEventListener('submit', () => {
-            if (playerIdInput.value) { // Only submit if a valid player ID is set
-                loadingDiv.style.display = 'block';
-                form.style.display = 'none';
-            } else {
-                alert("Please select a valid player from the search results.");
-                event.preventDefault();
-            }
-        });
+        function setLoadingState(select, text, disable) {
+            select.innerHTML = `<option value="">${text}</option>`;
+            select.disabled = disable;
+        }
+
+        function setErrorState(select, text) {
+            select.innerHTML = `<option value="">${text}</option>`;
+            select.disabled = true;
+        }
+
+        function resetDropdowns(levels) {
+            if (levels.includes('match')) setLoadingState(matchSelect, '-- Select a Year First --', true);
+            if (levels.includes('player')) setLoadingState(playerSelect, '-- Select a Match First --', true);
+        }
     </script>
 </body>
 </html>
