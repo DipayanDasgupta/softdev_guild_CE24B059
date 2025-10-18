@@ -78,8 +78,8 @@ Follow these steps to set up and run the project locally.
 ### 1. Clone the Repository
 
 ```bash
-git clone <your-repository-url>
-cd <your-repository-name>
+git clone https://github.com/DipayanDasgupta/softdev_guild_CE24B059.git 
+cd softdev_guild_CE24B059
 ```
 
 ### 2. Set Up Environment Variables
